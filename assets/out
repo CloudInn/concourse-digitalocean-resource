@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+## Worker destruction script
+
+set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
+exec 3>&1 # make stdout available as fd 3 for the result, echo "hello world" >&3 (will print to stdout)
+exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will print to stderr)
+
+home=$1
+script_dir=$(dirname $0)
+mkdir -p $home/wpresource && cd $home/wpresource
+
+# load env, configure ssh, fly and does shit..
+. $script_dir/common.sh
+
+init_vars
+init_fly
+
+# Delete worker droplet
+echo "Destroying droplet: \"$WORKER_NAME\""
+
+while true
+do
+  status=$(\
+  curl -sX DELETE "https://api.digitalocean.com/v2/droplets?tag_name=$WORKER_NAME" \
+    -w "%{http_code}" \
+    -o /dev/null \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DO_API_KEY"\
+  )
+
+  if [ $status -eq '204' ]; then
+    echo "Droplet \"$WORKER_NAME\" was destroyed successfully :D"
+    break
+  else
+    echo "Failed to destroy droplet \"$WORKER_NAME\" :( trying again in few seconds.."
+    sleep 3
+  fi
+done
+
+
+echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry..\n"
+# Prune the worker from concourse web service
+while true
+do
+  set +e
+  fly -t main pw -w $WORKER_NAME
+  fly -t main ws | cut -d\  -f1 | grep "^$WORKER_NAME\$" > /dev/null; R=$?
+  set -e
+  if [ $R -ne 0 ]; then
+    echo "Concourse worker $WORKER_NAME was successfully removed from the TSA server :D"
+    break
+  else
+    echo "Concourse worker $WORKER_NAME is still registered :( trying to prune it again in 10 seconds.."
+    sleep 10
+  fi
+done
+
+echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Worker destroyed"},
+    {"name": "worker_name", "value": '"$WORKER_NAME"'}
+  ]
+}' >&3

@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+
+## Worker creation script
+
+set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
+exec 3>&1 # make stdout available as fd 3 for the result, echo "hello world" >&3 (will print to stdout)
+exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will print to stderr)
+
+home=$1
+script_dir=$(dirname $0)
+mkdir -p $home/wpresource && cd $home/wpresource
+
+# load env, configure ssh, fly and does shit..
+. $script_dir/common.sh
+
+init_vars
+init_fly
+get_concourse_version
+init_ssh
+
+
+# check if the public key of $DO_VM_KEY is added to digitalocean account by requesting its fingerprint, otherwise add it
+FP=$(ssh-keygen -E md5 -lf $keys/id_rsa | pcregrep -o1 "^\d+ MD5:([a-zA-Z0-9:]*)")
+status=$(\
+  curl -sX GET "https://api.digitalocean.com/v2/account/keys/$FP" \
+    -w "%{http_code}\n" \
+    -o /dev/null \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DO_API_KEY"\
+)
+if [ $status -ne '200' ]; then
+  printf "Adding public key to digitalocean account with fingerprint:\n$FP\n\n"
+  status=$(curl -sX POST "https://api.digitalocean.com/v2/account/keys" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DO_API_KEY" \
+    -d '\
+{
+  "name":"concourse-worker-droplet-key",
+  "public_key":'"$(ssh-keygen -y -f $keys/id_rsa)"'
+}'
+  )
+  if [ ! $status -ne '201' ]; then
+    echo "Failed to add public key used to access droplet to digitalocean account"
+    echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Failure"},
+    {"name": "error", "value": "Failed to add public key used to access droplet to digitalocean account"}
+  ]
+}' >&3
+    exit 1
+  fi
+  printf "Successfully added public key: \"concourse-worker-droplet-key\" to digitalocean account:\n$FP\n\n"
+fi
+
+DO_VM_SEED_KEYS_FP+=("$FP")
+FPS=$(printf '%s\0' "${DO_VM_SEED_KEYS_FP[@]}" | jq -csR 'split("\u0000")') # convert from shell to json style array
+
+echo "Creating droplet \"$WORKER_NAME\" on Digitalocean"
+result=$(\
+curl -sSX POST "https://api.digitalocean.com/v2/droplets" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DO_API_KEY" \
+  -d \
+  "{
+    \"name\": \"$WORKER_NAME\",
+    \"region\": \"$DO_REGION\",
+    \"size\": \"$DO_SIZE\",
+    \"image\": \"docker-16-04\",
+    \"ssh_keys\": $FPS,
+    \"backups\": false,
+    \"ipv6\": true,
+    \"user_data\": null,
+    \"private_networking\": true,
+    \"volumes\": null,
+    \"tags\": [
+      \"$WORKER_NAME\",
+      \"concourse-worker\"
+    ]
+  }"\
+)
+
+droplet_id=$(echo "$result" | jq -r '.droplet.id')
+
+if [ $droplet_id = 'null' ];
+  then
+    echo "Failed to create droplet"
+    echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Failure"},
+    {"name": "error", "value": "Failed to create droplet"}
+  ]
+}' >&3
+    exit 1
+  else
+    echo "Droplet \"$WORKER_NAME\" was created successfully with id: ($droplet_id)"
+fi
+
+echo "Checking if droplet is accessible yet"
+while true
+do
+  sleep 10
+  set +e
+  droplet_ip=$(curl -sSX GET \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DO_API_KEY" \
+  "https://api.digitalocean.com/v2/droplets/$droplet_id" | jq -r '.droplet.networks.v4[0].ip_address')
+
+  ssh root@$droplet_ip "exit"; R=$?
+  set -e
+  if [ $R -eq 0 ]; then
+    echo "Droplet $WORKER_NAME is accessible on $droplet_ip :D"
+    break
+  else
+    echo "Failed to access droplet \"$WORKER_NAME\" on $droplet_ip :( trying again in 10 seconds.."
+  fi
+done
+
+echo "Configuring concourse worker on the created droplet.."
+ssh root@$droplet_ip "mkdir -p /etc/concourse"
+scp $keys/worker_key $keys/tsa_host_key.pub root@$droplet_ip:/etc/concourse/
+ssh root@$droplet_ip \
+  "docker run -d --privileged \
+    --name $WORKER_NAME \
+    --restart always \
+    -v /etc/concourse:/etc/concourse \
+    concourse/concourse:$CO_VERSION worker --name=$WORKER_NAME --tag=$WORKER_NAME --tsa-host=$CO_TSA_HOST --tsa-public-key=/etc/concourse/tsa_host_key.pub --tsa-worker-private-key=/etc/concourse/worker_key"
+echo "Worker was configured Successfully\n"
+
+echo "Waiting for the worker to register itself to TSA server.."
+# Checking if worker is registered to TSA
+while true
+do
+  set +e
+  fly -t main ws | cut -d\  -f1 | grep "^$WORKER_NAME\$" > /dev/null; R=$?
+  set -e
+  if [ $R -eq 0 ]; then
+    echo "Concourse worker $WORKER_NAME is successfully registered to the TSA server :D"
+    sleep 2
+    break
+  else
+    echo "Concourse worker is not registered yet :( waiting 5 more seconds.."
+    sleep 5
+  fi
+done
+
+mkdir -p $home/worker && cd $home/worker
+echo "$WORKER_NAME" > name
+echo "$droplet_id" > id
+echo "$droplet_ip" > ip
+
+echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Worker created"},
+    {"name": "worker_name", "value": '"$WORKER_NAME"'},
+    {"name": "droplet_id", "value": '"$droplet_id"'},
+    {"name": "droplet_ip", "value": '"$droplet_ip"'}
+  ]
+}' >&3

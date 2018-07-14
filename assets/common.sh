@@ -1,31 +1,16 @@
 #!/usr/bin/env bash
 
-# WORKER_NAME  XXX default to "worker-<pipeline>-<job>-<build number>" (substituting anything other alphanumeric with hyphen -)
-# DO_API_KEY  XXX source
-# DO_SIZE  XXX source (default "s-2vcpu-2gb")
-# DO_REGION  XXX source
-
-# DO_VM_KEY  XXX source, check if it's public key fingerprint is add to DO keys or add the public key
-# DO_VM_SEED_KEYS_FP  XXX the fingerprint of the previous key ^ (generate it)
-
-# CO_WORKER_KEY  XXX source (this key should be previously added to CONCOURSE_TSA_AUTHORIZED_KEYS)
-# CO_TSA_PUB_KEY  XXX source (the public key for CONCOURSE_TSA_HOST_KEY)
-# CO_TSA_HOST  XXX extract from (CO_WEB_HOST) adding the default port 2222 or optinal one if set, it's used by worker to connect to tsa
-# CO_TSA_PORT  XXX source (to use instead of the default 2222 on previous var ^)
-# CO_WEB_HOST  XXX read from the env
-# FLY_USERNAME  XXX source
-# FLY_PASSWORD  XXX source
-# CO_VERSION  XXX get from $(fly sync) command
-
 set -eu
 
 payload=$(cat) # reading input from stdin (source/params/etc..)
 
 # initializing variables
 init_vars(){
-  WORKER_NAME=$(echo "ci-worker-$BUILD_PIPELINE_NAME-$BUILD_JOB_NAME-$BUILD_NAME" | sed -r 's/[^a-zA-Z0-9]+/-/g')
+  GENERATED_WORKER_NAME=$(echo "ci-worker-$BUILD_PIPELINE_NAME-$BUILD_JOB_NAME" | sed -r 's/[^a-zA-Z0-9]+/-/g')
+  READ_WORKER_NAME=$(echo "$payload" | jq -r '.params.worker_name // ""')
+  WORKER_NAME=${READ_WORKER_NAME:-$GENERATED_WORKER_NAME}
   DO_API_KEY=$(echo "$payload" | jq -r '.source.api_key // ""')
-  DO_REGION=$(echo "$payload" | jq -r '.source.region // ""')
+  DO_REGION=$(echo "$payload" | jq -r '.source.region // "ams3"')
   DO_SIZE=$(echo "$payload" | jq -r '.source.droplet_size // "s-2vcpu-2gb"')
   CO_WEB_HOST="$ATC_EXTERNAL_URL"
   CO_WORKER_KEY=$(echo "$payload" | jq -r '.source.ci_worker_key // ""')

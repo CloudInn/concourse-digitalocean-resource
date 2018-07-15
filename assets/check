@@ -1,4 +1,6 @@
 #!/bin/sh
 
 # empty version to keep Concourse happy
-echo '{"version": {}}'
+[
+  { "ref": "" }
+]

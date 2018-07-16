@@ -100,6 +100,7 @@ if [ $droplet_id = 'null' ];
     echo "Droplet \"$WORKER_NAME\" was created successfully with id: ($droplet_id)"
 fi
 
+echo
 echo "Checking if droplet is accessible yet"
 while true
 do
@@ -120,7 +121,8 @@ do
   fi
 done
 
-echo "Configuring concourse worker on the created droplet.."
+echo
+echo "Configuring concourse worker on the created droplet:"
 ssh root@$droplet_ip "mkdir -p /etc/concourse"
 scp $keys/worker_key $keys/tsa_host_key.pub root@$droplet_ip:/etc/concourse/
 ssh root@$droplet_ip \
@@ -129,9 +131,11 @@ ssh root@$droplet_ip \
     --restart always \
     -v /etc/concourse:/etc/concourse \
     concourse/concourse:$CO_VERSION worker --name=$WORKER_NAME --tag=$WORKER_NAME --tsa-host=$CO_TSA_HOST --tsa-public-key=/etc/concourse/tsa_host_key.pub --tsa-worker-private-key=/etc/concourse/worker_key"
-echo "Worker was configured Successfully\n"
+echo
+echo "Worker is configured successfully :)"
 
-echo "Waiting for the worker to register itself to TSA server.."
+echo
+echo "Waiting for the worker to register itself to TSA server."
 # Checking if worker is registered to TSA
 while true
 do
@@ -139,12 +143,15 @@ do
   fly -t main ws | cut -d\  -f1 | grep "^$WORKER_NAME\$" > /dev/null; R=$?
   set -e
   if [ $R -eq 0 ]; then
-    echo "Concourse worker $WORKER_NAME is successfully registered to the TSA server :D"
-    sleep 2
+    echo
+    echo "Concourse worker $WORKER_NAME is successfully registered to TSA server :D"
     break
   else
-    echo "Concourse worker is not registered yet :( waiting 5 more seconds.."
-    sleep 5
+    for i in $(seq 5 -1 1); do
+      printf "Concourse worker is not registered yet :( trying again in ${i}s.  \r"
+      sleep 1
+    done
+    printf "Concourse worker is not registered yet :( trying again now.         \n"
   fi
 done
 

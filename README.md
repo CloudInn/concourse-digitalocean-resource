@@ -8,7 +8,7 @@ A [Concourse](http://concourse.ci/) resource to minimize CI infrastructure cost 
 
 - You'll need at least one Linux worker to be used by the resource to provision more workers
 
-- It's highly recommended to create and destroy the worker inside the same job to always guarantee the destruction of the droplet, to achieve so use `get` under `ensure` step on the job level.
+- It's highly recommended to create and destroy the worker inside the same job to always guarantee the destruction of the droplet, to achieve so use `get` (destroys worker) under `ensure` step on the job level to make sure the droplet is always destroyed no matter the job passed or failed.
 
 - Jobs with worker provisioning should limit running multiple builds of the same job in parallel using `serial: true` otherwise one build finish will destroy all the workers of all build for the same job causing them to hang, example of using serial:
 
@@ -80,11 +80,11 @@ Provision worker with the given name (tag) that can be used to tag later steps t
 
 ##### params
 
-* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang) if you don't set this (and you're not encouraged at all to do so, it will default to: ci-worker-<PIPELINE_NAME>-<JOB_NAME>, ex: ci-worker-projectX-build).
+* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on later job steps to make them run on the provisioned worker (using the same name for workers in multiple jobs running in parallel will cause one finished job to destroy all workers with the same name that are running other jobs, leads to other jobs running on the worker with the same name to hang).
 
 ##### get_params
 
-* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't but the worker will get instantly destroyed that makes this resource useless.
+* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't fail but the worker will get instantly destroyed which makes the resource useless.
 
 ### `in` (get): Destroy the droplet and prune the worker
 
@@ -92,12 +92,19 @@ Destroy the created droplet and prune the worker from Concourse registry, this s
 
 ##### params
 
-* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang).
+* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on later job steps to make them run on the provisioned worker (using the same name for workers in multiple jobs running in parallel will cause one finished job to destroy all workers with the same name that are running other jobs, leads to other jobs running on the worker with the same name to hang).
 
 
 ## Example
 
 ```yaml
+resource_types:
+- name: worker-resource
+  type: docker-image
+  source:
+    repository: cloudinn/concourse-digitalocean-resource
+    tag: latest
+
 resources:
 - name: worker
   type: worker-resource
@@ -111,50 +118,36 @@ resources:
     fly_password: ((FLY_PASSWORD))
     droplet_key: ((DO_VM_KEY))
 
-resource_types:
-- name: hangouts-resource
-  type: docker-image
-  source:
-    repository: cloudinn/concourse-hangouts-resource
-    tag: latest
+jobs:
+  - name: build
+    serial: true
+    plan:
+      - put: worker
+        timeout: 3.5m
+        params:
+          worker_name: job-x-build-worker
+        get_params:
+          dont_destroy: true
 
-- name: worker-resource
-  type: docker-image
-  source:
-    repository: cloudinn/concourse-digitalocean-resource
-    tag: latest
+      - task: some-task
+        tags: [job-x-build-worker]
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: alpine
+          run:
+            path: sh
+            args:
+              - -exc
+              - |
+                echo "A task/step running on: job-x-build-worker"
 
-    jobs:
-      - name: build
-        serial: true
-        plan:
-          - put: worker
-            timeout: 3.5m
-            params:
-              worker_name: job-x-build-worker
-            get_params:
-              dont_destroy: true
-
-          - task: some-task
-            tags: [job-x-build-worker]
-            config:
-              platform: linux
-              image_resource:
-                type: docker-image
-                source:
-                  repository: alpine
-              run:
-                path: sh
-                args:
-                  - -exc
-                  - |
-                    echo "A task/step running on: job-x-build-worker"
-
-        ensure:
-          get: worker
-          params:
-            worker_name: job-x-build-worker
-
+    ensure:
+      get: worker
+      params:
+        worker_name: job-x-build-worker
 ```
 
 ## License

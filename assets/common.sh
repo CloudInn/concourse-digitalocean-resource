@@ -38,7 +38,7 @@ init_fly(){
     curl "$CO_WEB_HOST/api/v1/cli?arch=amd64&platform=linux" -sSLo /usr/bin/fly
     chmod +x /usr/bin/fly
   fi
-  fly -t main l -u$FLY_USERNAME -p$FLY_PASSWORD -c $CO_WEB_HOST
+  fly -t main l -u$FLY_USERNAME -p$FLY_PASSWORD -c $CO_WEB_HOST > /dev/null
 }
 
 get_concourse_version(){

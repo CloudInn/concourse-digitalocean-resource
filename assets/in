@@ -45,8 +45,8 @@ do
   fi
 done
 
-
-echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry..\n"
+echo
+echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry.."
 # Prune the worker from concourse web service
 while true
 do
@@ -58,8 +58,11 @@ do
     echo "Concourse worker $WORKER_NAME was successfully removed from the TSA server :D"
     break
   else
-    echo "Concourse worker $WORKER_NAME is still registered :( trying to prune it again in 10 seconds.."
-    sleep 10
+    for i in $(seq 10 -1 1); do
+      printf "Concourse worker $WORKER_NAME is still registered :( trying to prune it again in ${i}s.  \r"
+      sleep 1
+    done
+    printf "Concourse worker $WORKER_NAME is still registered :( trying to prune it again now.         \n"
   fi
 done
 

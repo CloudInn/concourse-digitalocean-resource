@@ -5,8 +5,8 @@ set -eu
 payload=$(cat) # reading input from stdin (source/params/etc..)
 
 # if
-check_ref(){
-  REF=$(echo "$payload" | jq -r '.version.ref // ""')
+check_create(){
+  dont_destroy=$(echo "$payload" | jq -r '.params.dont_destroy // false')
 }
 
 # initializing variables

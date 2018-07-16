@@ -62,21 +62,26 @@ resources:
 
 ### `check`: Non-functional
 
-### `in`: Provision droplet and register as worker
+### `out`: Provision droplet and register as worker
 
-[](TODO: write description)
+[ ](TODO: write description)
+
+##### Parameters
+
+##### Get Parameters
+
+* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't but the worker will get instantly destroyed that makes this resource useless.
+
+* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang) if you don't set this (and you're not encouraged at all to do so, it will default to: ci-worker-<PIPELINE_NAME>-<JOB_NAME>, ex: ci-worker-projectX-build).
+
+### `in`: Destroy the droplet and prune the worker
+
+[ ](TODO: write description)
 
 ##### Parameters
 
 * `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang).
 
-### `out`: Destroy the droplet and prune the worker
-
-[](TODO: write description)
-
-##### Parameters
-
-* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang) if you don't set this (and you're not encouraged at all to do so, it will default to: ci-worker-<PIPELINE_NAME>-<JOB_NAME>, ex: ci-worker-projectX-build).
 
 ## Example
 

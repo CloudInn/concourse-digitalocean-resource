@@ -30,7 +30,7 @@ init_fly(){
   fly -t main l -u$FLY_USERNAME -p$FLY_PASSWORD -c $CO_WEB_HOST
 }
 
-keys=$(mktemp $TMPDIR/wp-resource-data.XXXXXX)
+keys=$(mktemp -d /var/tmp/do-resource.XXXXXX)
 echo "$CO_WORKER_KEY" > $keys/worker_key
 echo "$CO_TSA_PUB_KEY" > $keys/tsa_host_key.pub
 echo "$DO_VM_KEY" > $keys/id_rsa

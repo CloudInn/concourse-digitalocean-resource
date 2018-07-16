@@ -13,7 +13,7 @@ check_create(){
 init_vars(){
   GENERATED_WORKER_NAME=$(echo "ci-worker-$BUILD_PIPELINE_NAME-$BUILD_JOB_NAME" | sed -r 's/[^a-zA-Z0-9]+/-/g')
   READ_WORKER_NAME=$(echo "$payload" | jq -r '.params.worker_name // ""')
-  WORKER_NAME=${READ_WORKER_NAME:-$GENERATED_WORKER_NAME}
+  WORKER_NAME=${READ_WORKER_NAME}
   DO_API_KEY=$(echo "$payload" | jq -er '.source.api_key // ""')
   DO_REGION=$(echo "$payload" | jq -r '.source.region // "ams3"')
   DO_SIZE=$(echo "$payload" | jq -r '.source.droplet_size // "s-2vcpu-2gb"')

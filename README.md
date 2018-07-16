@@ -1,12 +1,14 @@
 Concourse DigitalOcean Worker Provision Resource
 ======================
 
-A [Concourse](http://concourse.ci/) resource to dynamically provision droplets on DigitalOcean and configure them as workers to run pipeline job and destroy them after job is done.
+A [Concourse](http://concourse.ci/) resource to minimize CI infrastructure cost by dynamically provision droplets on DigitalOcean and configure them as workers to run pipeline job and destroy them after the job is done (DigitalOcean charges you per hour).
 
 
 ## Limitations
 
-- It's highly recommended to create and destroy the worker inside a job to always guarantee the destruction of the droplet using it under `ensure` step on the job level.
+- You'll need at least one Linux worker to be used by the resource to provision more workers
+
+- It's highly recommended to create and destroy the worker inside the same job to always guarantee the destruction of the droplet, to achieve so use `get` under `ensure` step on the job level.
 
 - Jobs with worker provisioning should limit running multiple builds of the same job in parallel using `serial: true` otherwise one build finish will destroy all the workers of all build for the same job causing them to hang, example of using serial:
 
@@ -17,6 +19,14 @@ jobs:
     plan:
       - ....
 ```
+
+## Preparations
+
+- Generate API Key from your DigitalOcean account
+- Generate an ssh private key to be passed it as `droplet_key` (will be used by the resource to configure the created droplets).
+- Get Concourse TSA public key to be passed it as `ci_tsa_pub_key`
+- Get the worker private key to be passed as `ci_worker_key`, this key should already have its public key added to Concourse web under TSA authorized keys.
+- Optional, you select the region and droplet size to be used as worker, you can obtain a full list using [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/)
 
 ## Resource Type Configuration
 
@@ -62,30 +72,90 @@ resources:
 
 ### `check`: Non-functional
 
-### `out`: Provision droplet and register as worker
+### `out` (put): Provision droplet and register as worker
 
-[ ](TODO: write description)
+Provision worker with the given name (tag) that can be used to tag later steps to run on the created worker.
 
-##### Parameters
+> You might want to use `timeout` modifier with `3.5m` in resource put step to avoid the rare case when DigitalOcean API fails to create the worker or takes so long (Usually it something is wrong if it takes more then 3.5 minutes)
 
-##### Get Parameters
-
-* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't but the worker will get instantly destroyed that makes this resource useless.
+##### params
 
 * `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang) if you don't set this (and you're not encouraged at all to do so, it will default to: ci-worker-<PIPELINE_NAME>-<JOB_NAME>, ex: ci-worker-projectX-build).
 
-### `in`: Destroy the droplet and prune the worker
+##### get_params
 
-[ ](TODO: write description)
+* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't but the worker will get instantly destroyed that makes this resource useless.
 
-##### Parameters
+### `in` (get): Destroy the droplet and prune the worker
+
+Destroy the created droplet and prune the worker from Concourse registry, this step shouldn't be running on the created worker.
+
+##### params
 
 * `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on job steps to make them run on the provisioned worker (using the same name for multiple workers will cause one finished job to destroy all workers with the same name lead to other jobs running on the worker with the same name to hang).
 
 
 ## Example
 
-> Adding example soon
+```yaml
+resources:
+- name: worker
+  type: worker-resource
+  source:
+    api_key: ((DO_API_KEY))
+    region: "ams3"
+    droplet_size: "s-2vcpu-2gb"
+    ci_worker_key: ((CONCOURSE_WORKER_KEY))
+    ci_tsa_pub_key: ((CONCOURSE_TSA_PUB_KEY))
+    fly_username: ((FLY_USERNAME))
+    fly_password: ((FLY_PASSWORD))
+    droplet_key: ((DO_VM_KEY))
+
+resource_types:
+- name: hangouts-resource
+  type: docker-image
+  source:
+    repository: cloudinn/concourse-hangouts-resource
+    tag: latest
+
+- name: worker-resource
+  type: docker-image
+  source:
+    repository: cloudinn/concourse-digitalocean-resource
+    tag: latest
+
+    jobs:
+      - name: build
+        serial: true
+        plan:
+          - put: worker
+            timeout: 3.5m
+            params:
+              worker_name: job-x-build-worker
+            get_params:
+              dont_destroy: true
+
+          - task: some-task
+            tags: [job-x-build-worker]
+            config:
+              platform: linux
+              image_resource:
+                type: docker-image
+                source:
+                  repository: alpine
+              run:
+                path: sh
+                args:
+                  - -exc
+                  - |
+                    echo "A task/step running on: job-x-build-worker"
+
+        ensure:
+          get: worker
+          params:
+            worker_name: job-x-build-worker
+
+```
 
 ## License
 

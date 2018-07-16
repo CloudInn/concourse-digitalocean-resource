@@ -2,9 +2,10 @@
 
 ## Worker destruction script
 
-set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
 exec 3>&1 # make stdout available as fd 3 for the result, echo "hello world" >&3 (will print to stdout)
 exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will print to stderr)
+
+set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
 
 home=$1
 script_dir=$(dirname $0)
@@ -58,9 +59,9 @@ done
 
 echo '
 {
-  "version": {},
+  "version": { "ref": "destroyed" },
   "metadata": [
     {"name": "status", "value": "Worker destroyed"},
-    {"name": "worker_name", "value": '"$WORKER_NAME"'}
+    {"name": "worker_name", "value": '"\"$WORKER_NAME\""'}
   ]
 }' >&3

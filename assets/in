@@ -2,9 +2,10 @@
 
 ## Worker creation script
 
-set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
 exec 3>&1 # make stdout available as fd 3 for the result, echo "hello world" >&3 (will print to stdout)
 exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will print to stderr)
+
+set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
 
 home=$1
 script_dir=$(dirname $0)
@@ -12,6 +13,11 @@ mkdir -p $home/wpresource && cd $home/wpresource
 
 # load env, configure ssh, fly and does shit..
 . $script_dir/common.sh
+
+check_ref
+if [ "$REF" = "destroy" ]; then
+  echo '{"version": { "ref": "destroyed" }}' >&3
+fi
 
 init_vars
 init_fly
@@ -152,13 +158,12 @@ echo "$WORKER_NAME" > name
 echo "$droplet_id" > id
 echo "$droplet_ip" > ip
 
-echo '
-{
-  "version": {},
+echo '{
+  "version": { "ref": "" },
   "metadata": [
     {"name": "status", "value": "Worker created"},
-    {"name": "worker_name", "value": '"$WORKER_NAME"'},
-    {"name": "droplet_id", "value": '"$droplet_id"'},
-    {"name": "droplet_ip", "value": '"$droplet_ip"'}
+    {"name": "worker_name", "value": '"\"$WORKER_NAME\""'},
+    {"name": "droplet_id", "value": '"\"$droplet_id\""'},
+    {"name": "droplet_ip", "value": '"\"$droplet_ip\""'}
   ]
 }' >&3

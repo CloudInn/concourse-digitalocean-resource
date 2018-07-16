@@ -58,9 +58,9 @@ done
 
 echo '
 {
-  "version": {},
+  "version": { "ref": "destroyed" },
   "metadata": [
     {"name": "status", "value": "Worker destroyed"},
-    {"name": "worker_name", "value": '"$WORKER_NAME"'}
+    {"name": "worker_name", "value": '"\"$WORKER_NAME\""'}
   ]
 }' >&3

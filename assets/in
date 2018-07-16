@@ -45,8 +45,8 @@ do
   fi
 done
 
-
-echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry..\n"
+echo
+echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry.."
 # Prune the worker from concourse web service
 while true
 do

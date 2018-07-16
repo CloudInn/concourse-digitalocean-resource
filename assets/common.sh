@@ -12,6 +12,7 @@ init_vars(){
   DO_API_KEY=$(echo "$payload" | jq -r '.source.api_key // ""')
   DO_REGION=$(echo "$payload" | jq -r '.source.region // "ams3"')
   DO_SIZE=$(echo "$payload" | jq -r '.source.droplet_size // "s-2vcpu-2gb"')
+  DO_DROPLET_KEY=$(echo "$payload" | jq -r '.source.droplet_kay // ""')
   CO_WEB_HOST="$ATC_EXTERNAL_URL"
   CO_WORKER_KEY=$(echo "$payload" | jq -r '.source.ci_worker_key // ""')
   CO_TSA_PUB_KEY=$(echo "$payload" | jq -r '.source.ci_tsa_pub_key // ""')
@@ -19,6 +20,11 @@ init_vars(){
   CO_TSA_HOST=$(echo "$ATC_EXTERNAL_URL" | pcregrep -o1 "^(?:https?:)?(?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:\/\n]+)"):"$CO_TSA_PORT"
   FLY_USERNAME=$(echo "$payload" | jq -r '.source.fly_username // ""')
   FLY_USERNAME=$(echo "$payload" | jq -r '.source.fly_password // ""')
+
+  keys=$(mktemp -d /var/tmp/do-resource.XXXXXX)
+  echo "$CO_WORKER_KEY" > $keys/worker_key
+  echo "$CO_TSA_PUB_KEY" > $keys/tsa_host_key.pub
+  echo "$DO_DROPLET_KEY" > $keys/id_rsa
 }
 
 init_fly(){
@@ -29,11 +35,6 @@ init_fly(){
   fi
   fly -t main l -u$FLY_USERNAME -p$FLY_PASSWORD -c $CO_WEB_HOST
 }
-
-keys=$(mktemp $TMPDIR/wp-resource-data.XXXXXX)
-echo "$CO_WORKER_KEY" > $keys/worker_key
-echo "$CO_TSA_PUB_KEY" > $keys/tsa_host_key.pub
-echo "$DO_VM_KEY" > $keys/id_rsa
 
 get_concourse_version(){
   # get concourse version

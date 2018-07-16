@@ -34,7 +34,8 @@ resource_types:
 * `api_key`: _Required - (String)_. A DigitalOcean API key, you can get it through your DigitalOcean account setting.
 * `region`: _Optional - (String)_. You can get the list of valid regions through [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/) (default: `ams3`)
 * `droplet_size`: _Optional - (String)_. You can get the list of valid sizes on selected region through [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/) (default `s-2vcpu-2gb`)
-* `ci_worker_key`: _Required - (String)_. A private key to be used by the worker to access TSA server, it should be previously added to CONCOURSE_TSA_AUTHORIZED_KEYS when configuring Concourse Web.
+* `droplet_kay`: _Required - (String)_. A generated ssh private key used to access the newly created droplets, the key will be used to generate public key and add it to DigitalOcean account add it to the created droplets to be able to access and install and configure concourse worker on them.
+* `ci_worker_key`: _Required - (String)_. An ssh private key to be used by the worker to access TSA server, it should be previously added to CONCOURSE_TSA_AUTHORIZED_KEYS when configuring Concourse Web.
 * `ci_tsa_pub_key`: _Required - (String)_. The public key of the key set in CONCOURSE_TSA_HOST_KEY in Concourse Web, to allow TSA to access this worker.
 * `ci_tsa_port`: _Optional - (String)_. Set this if you're using custom TSA port change (default: `2222`)
 * `fly_username`: _Required - (String)_. The username of Concourse basic auth, to allow using `fly prune-worker` command to make sure the worker is removed from TSA workers registry when it's destroyed.
@@ -49,6 +50,7 @@ resources:
     api_key: ((DO_API_KEY))
     region: "ams3"
     droplet_size: "s-2vcpu-2gb"
+    droplet_kay: ((DO_DROPLET_KEY))
     ci_worker_key: ((CONCOURSE_WORKER_KEY))
     ci_tsa_pub_key: ((CONCOURSE_TSA_PUBKEY))
     ci_tsa_port: 2222

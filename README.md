@@ -22,10 +22,10 @@ jobs:
 
 ## Preparations
 
-- Generate API Key from your DigitalOcean account
-- Generate an ssh private key to be passed it as `droplet_key` (will be used by the resource to configure the created droplets).
-- Get Concourse TSA public key to be passed it as `ci_tsa_pub_key`
-- Get the worker private key to be passed as `ci_worker_key`, this key should already have its public key added to Concourse web under TSA authorized keys.
+- Generate API Key from your DigitalOcean account to be passed as `api_key` in source
+- Generate an ssh private key to be passed as `droplet_key` in source (will be used by the resource to configure the created droplets).
+- Get Concourse TSA public key to be passed as `ci_tsa_pub_key` in source
+- Get the worker private key to be passed as `ci_worker_key` in srouce, this key should already have its public key added to Concourse web under TSA authorized keys.
 - Optional, you select the region and droplet size to be used as worker, you can obtain a full list using [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/)
 
 ## Resource Type Configuration
@@ -45,7 +45,7 @@ resource_types:
 * `region`: _Optional - (String)_. You can get the list of valid regions through [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/) (default: `ams3`)
 * `droplet_size`: _Optional - (String)_. You can get the list of valid sizes on selected region through [DigitalOcean API](https://developers.digitalocean.com/documentation/v2/) (default `s-2vcpu-2gb`)
 * `droplet_kay`: _Required - (String)_. A generated ssh private key used to access the newly created droplets, the key will be used to generate public key and add it to DigitalOcean account add it to the created droplets to be able to access and install and configure concourse worker on them.
-* `ci_worker_key`: _Required - (String)_. An ssh private key to be used by the worker to access TSA server, it should be previously added to CONCOURSE_TSA_AUTHORIZED_KEYS when configuring Concourse Web.
+* `ci_worker_key`: _Required - (String)_. An ssh private key to be used by the worker to access TSA server, its public key should be previously added to CONCOURSE_TSA_AUTHORIZED_KEYS when configuring Concourse Web.
 * `ci_tsa_pub_key`: _Required - (String)_. The public key of the key set in CONCOURSE_TSA_HOST_KEY in Concourse Web, to allow TSA to access this worker.
 * `ci_tsa_port`: _Optional - (String)_. Set this if you're using custom TSA port change (default: `2222`)
 * `fly_username`: _Required - (String)_. The username of Concourse basic auth, to allow using `fly prune-worker` command to make sure the worker is removed from TSA workers registry when it's destroyed.
@@ -76,7 +76,7 @@ resources:
 
 Provision worker with the given name (tag) that can be used to tag later steps to run on the created worker.
 
-> You might want to use `timeout` modifier with `3.5m` in resource put step to avoid the rare case when DigitalOcean API fails to create the worker or takes so long (Usually it something is wrong if it takes more then 3.5 minutes)
+> You might want to use `timeout` step modifier with `3.5m` in this resource put step to avoid the rare case when DigitalOcean API fails creating the worker or taking so long (Usually if it takes more then 3.5 minutes then it's bugged)
 
 ##### params
 
@@ -84,11 +84,11 @@ Provision worker with the given name (tag) that can be used to tag later steps t
 
 ##### get_params
 
-* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the get step won't fail but the worker will get instantly destroyed which makes the resource useless.
+* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the put step won't fail but the worker will get instantly destroyed after it's created what makes the resource useless.
 
 ### `in` (get): Destroy the droplet and prune the worker
 
-Destroy the created droplet and prune the worker from Concourse registry, this step shouldn't be running on the created worker.
+Destroy the created droplet and prune the worker from Concourse registry, this step shouldn't be executed on the same worker being destroyed.
 
 ##### params
 

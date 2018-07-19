@@ -8,11 +8,11 @@ exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will 
 set -eu # e to exit on any none-zero return, u to return error on accessing uninitialized variable
 
 home=$1
-script_dir=$(dirname $0)
-mkdir -p $home/wpresource && cd $home/wpresource
+resource_dir=$(dirname $0)
 
 # load env, and functions used to configure ssh, fly and others.
-. $script_dir/common.sh
+# shellcheck source=common.sh
+. $resource_dir/common.sh
 
 init_vars
 init_fly
@@ -161,7 +161,7 @@ echo "$droplet_id" > id
 echo "$droplet_ip" > ip
 
 echo '{
-  "version": {},
+  "version": {"ref": "'$random_ver'"},
   "metadata": [
     {"name": "status", "value": "Worker created"},
     {"name": "worker_name", "value": '"\"$WORKER_NAME\""'},

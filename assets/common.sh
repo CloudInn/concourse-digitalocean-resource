@@ -4,6 +4,9 @@ set -eu
 
 payload=$(cat) # reading input from stdin (source/params/etc..)
 
+# a random version to always return to concourse to guarantee it will always execute get (and destroy worker) instead of using cache and does nothing
+random_ver=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1)
+
 # if
 check_create(){
   dont_destroy=$(echo "$payload" | jq -r '.params.dont_destroy // false')
@@ -30,9 +33,6 @@ init_vars(){
   echo "$CO_WORKER_KEY" > $keys/worker_key
   echo "$CO_TSA_PUB_KEY" > $keys/tsa_host_key.pub
   echo "$DO_DROPLET_KEY" > $keys/id_rsa
-
-  # a random version to always return to concourse to guarantee it will always execute get (and destroy worker) instead of using cache and does nothing
-  random_ver=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1)
 }
 
 init_fly(){

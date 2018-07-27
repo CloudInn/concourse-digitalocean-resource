@@ -3,6 +3,7 @@ Concourse DigitalOcean Worker Provision Resource
 
 A [Concourse](http://concourse.ci/) resource to minimize CI infrastructure cost by dynamically provision droplets on DigitalOcean and configure them as workers to run pipeline job and destroy them after the job is done (DigitalOcean charges you per hour).
 
+> **Note:** This resource is tested on Concourse v3.13.0 and will mostly work on any 3.xx version, but it does not support version 4.00 and higher yet (it has not been tested on it).
 
 ## Limitations
 

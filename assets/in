@@ -22,8 +22,15 @@ fi
 
 init_vars
 init_fly
+init_ssh
 
-# Delete worker droplet
+# Retiring worker
+droplet_ip=$(<$home/$WORKER_NAME/ip)
+ssh root@$droplet_ip \
+  "docker exec -it $WORKER_NAME \
+    concourse retire-worker --name=$WORKER_NAME --tsa-host=$CO_TSA_HOST --tsa-public-key=/etc/concourse/tsa_host_key.pub --tsa-worker-private-key=/etc/concourse/worker_key"
+
+# Destroy worker droplet
 echo "Destroying droplet: \"$WORKER_NAME\""
 
 while true

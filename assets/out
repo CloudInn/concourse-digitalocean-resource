@@ -155,10 +155,10 @@ do
   fi
 done
 
-mkdir -p $home/worker && cd $home/worker
-echo "$WORKER_NAME" > name
-echo "$droplet_id" > id
-echo "$droplet_ip" > ip
+mkdir -p $home/worker/$WORKER_NAME && cd $home/worker
+echo "$WORKER_NAME" | tee ./name > ./$WORKER_NAME/name
+echo "$droplet_id" | tee ./id > ./$WORKER_NAME/id
+echo "$droplet_ip" | tee ./ip > ./$WORKER_NAME/ip
 
 echo '{
   "version": {"ref": "'$random_ver'"},

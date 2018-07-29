@@ -9,7 +9,7 @@ A [Concourse](http://concourse.ci/) resource to minimize CI infrastructure cost 
 
 - You'll need at least one Linux worker to be used by the resource to provision more workers
 
-- It's highly recommended to create and destroy the worker inside the same job to always guarantee the destruction of the droplet, to achieve so use `get` (destroys worker) under `ensure` step on the job level to make sure the droplet is always destroyed no matter the job passed or failed.
+- It's highly recommended to create and destroy the worker inside the same job to always guarantee the destruction of the droplet, to achieve so use `put` (destroys worker) under `ensure` step on the job level to make sure the droplet is always destroyed no matter the job passed or failed.
 
 - Jobs with worker provisioning should limit running multiple builds of the same job in parallel using `serial: true` otherwise one build finish will destroy all the workers of all build for the same job causing them to hang, example of using serial:
 
@@ -73,27 +73,27 @@ resources:
 
 ### `check`: Non-functional
 
-### `out` (put): Provision droplet and register as worker
+### `in` (get): Provision droplet and register as worker
 
 Provision worker with the given name (tag) that can be used to tag later steps to run on the created worker.
 
-> You might want to use `timeout` step modifier with `3.5m` in this resource put step to avoid the rare case when DigitalOcean API fails creating the worker or taking so long (Usually if it takes more then 3.5 minutes then it's bugged)
+> You might want to use `timeout` step modifier with `3.5m` in this resource get step to avoid the rare case when DigitalOcean API fails creating the worker or taking so long (I noticed it usually take more then 3.5 minutes to init worker when droplet is bugged)
 
 ##### params
 
 * `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on later job steps to make them run on the provisioned worker (using the same name for workers in multiple jobs running in parallel will cause one finished job to destroy all workers with the same name that are running other jobs, leads to other jobs running on the worker with the same name to hang).
 
-##### get_params
-
-* `dont_destroy`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to destroy the worker we just created, this parameter is used by the resource to prevent this behavior. If you don't pass it the put step won't fail but the worker will get instantly destroyed after it's created what makes the resource useless.
-
-### `in` (get): Destroy the droplet and prune the worker
+### `out` (put): Destroy the droplet and prune the worker
 
 Destroy the created droplet and prune the worker from Concourse registry, this step shouldn't be executed on the same worker being destroyed.
 
 ##### params
 
-* `worker_name`: _Required - (String)_. A unique name across all pipelines for digitalocean account, must be valid hostname (contains alphanumerics and hyphens), this name should be used in tags on later job steps to make them run on the provisioned worker (using the same name for workers in multiple jobs running in parallel will cause one finished job to destroy all workers with the same name that are running other jobs, leads to other jobs running on the worker with the same name to hang).
+* `worker`: _Required - (String)_. the resource name fetched in previous get step to be destroyed (ex. `worker: my-worker` to destroy worker created by previous get step `get: my-worker`).
+
+##### get_params
+
+* `dont_get`:  _Required - (Boolean)_. You must always set to `true`. Concourse by default does implicit get after put to any resource, this behavior will lead to create new droplet after the one we just destroyed, this parameter is used by the resource to prevent this behavior. If you don't pass it the put step won't fail but a get step will be executed creating a worker after it's destroyed what will cause a droplet to be kept alive consuming digital ocean credit, and might as well cause later builds to fail.
 
 
 ## Example
@@ -107,7 +107,7 @@ resource_types:
     tag: latest
 
 resources:
-- name: worker
+- name: my-worker
   type: worker-resource
   source:
     api_key: ((DO_API_KEY))
@@ -123,12 +123,10 @@ jobs:
   - name: build
     serial: true
     plan:
-      - put: worker
+      - get: my-worker
         timeout: 3.5m
         params:
           worker_name: job-x-build-worker
-        get_params:
-          dont_destroy: true
 
       - task: some-task
         tags: [job-x-build-worker]
@@ -146,9 +144,11 @@ jobs:
                 echo "A task/step running on: job-x-build-worker"
 
     ensure:
-      get: worker
+      put: my-worker
       params:
-        worker_name: job-x-build-worker
+        worker: my-worker
+      get_params:
+        dont_get: true
 ```
 
 ## License

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-## Worker destruction script
+## Worker creation script
 
 exec 3>&1 # make stdout available as fd 3 for the result, echo "hello world" >&3 (will print to stdout)
 exec 1>&2 # redirect all output to stderr for logging, echo "hello world" (will print to stderr)
@@ -9,76 +9,167 @@ set -eu # e to exit on any none-zero return, u to return error on accessing unin
 
 home=$1
 resource_dir=$(dirname $0)
+cd $home
 
 # load env, and functions used to configure ssh, fly and others.
 # shellcheck source=common.sh
 . $resource_dir/common.sh
 
-check_create
-if [ "$dont_destroy" = true ]; then
-  echo '{"version": {"ref": "'$random_ver'"}}' >&3
-  exit
-fi
-
 init_vars
+
+echo "$WORKER_NAME" > ./name
+
 init_fly
+get_concourse_version
 init_ssh
 
-# Retiring worker
-droplet_ip=$(<$home/$WORKER_NAME/ip)
-ssh root@$droplet_ip \
-  "docker exec -it $WORKER_NAME \
-    concourse retire-worker --name=$WORKER_NAME --tsa-host=$CO_TSA_HOST --tsa-public-key=/etc/concourse/tsa_host_key.pub --tsa-worker-private-key=/etc/concourse/worker_key"
 
-# Destroy worker droplet
-echo "Destroying droplet: \"$WORKER_NAME\""
-
-while true
-do
-  status=$(\
-  curl -sX DELETE "https://api.digitalocean.com/v2/droplets?tag_name=$WORKER_NAME" \
-    -w "%{http_code}" \
+# check if the public key of $DO_VM_KEY is added to digitalocean account by requesting its fingerprint, otherwise add it
+FP=$(ssh-keygen -E md5 -lf $keys/id_rsa | pcregrep -o1 "^\d+ MD5:([a-zA-Z0-9:]*)")
+status=$(\
+  curl -sX GET "https://api.digitalocean.com/v2/account/keys/$FP" \
+    -w "%{http_code}\n" \
     -o /dev/null \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $DO_API_KEY"\
+)
+if [ $status -ne '200' ]; then
+  printf "Adding public key to digitalocean account with fingerprint:\n$FP\n\n"
+  status=$(curl -sX POST "https://api.digitalocean.com/v2/account/keys" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $DO_API_KEY" \
+    -d '\
+{
+  "name":"concourse-worker-droplet-key",
+  "public_key":'"$(ssh-keygen -y -f $keys/id_rsa)"'
+}'
   )
+  if [ ! $status -ne '201' ]; then
+    echo "Failed to add public key used to access droplet to digitalocean account"
+    echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Failure"},
+    {"name": "error", "value": "Failed to add public key used to access droplet to digitalocean account"}
+  ]
+}' >&3
+    exit 1
+  fi
+  printf "Successfully added public key: \"concourse-worker-droplet-key\" to digitalocean account:\n$FP\n\n"
+fi
 
-  if [ $status -eq '204' ]; then
+DO_VM_SEED_KEYS_FP+=("$FP")
+FPS=$(printf '%s\0' "${DO_VM_SEED_KEYS_FP[@]}" | jq -csR 'split("\u0000")') # convert from shell to json style array
 
-    echo "Droplet \"$WORKER_NAME\" was destroyed successfully :D"
+echo "Creating droplet \"$WORKER_NAME\" on Digitalocean"
+result=$(\
+curl -sSX POST "https://api.digitalocean.com/v2/droplets" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DO_API_KEY" \
+  -d \
+  "{
+    \"name\": \"$WORKER_NAME\",
+    \"region\": \"$DO_REGION\",
+    \"size\": \"$DO_SIZE\",
+    \"image\": \"docker-16-04\",
+    \"ssh_keys\": $FPS,
+    \"backups\": false,
+    \"ipv6\": true,
+    \"user_data\": null,
+    \"private_networking\": true,
+    \"volumes\": null,
+    \"tags\": [
+      \"$WORKER_NAME\",
+      \"concourse-worker\"
+    ]
+  }"\
+)
+
+droplet_id=$(echo "$result" | jq -r '.droplet.id')
+
+if [ $droplet_id = 'null' ];
+  then
+    echo "Failed to create droplet"
+    echo '
+{
+  "version": {},
+  "metadata": [
+    {"name": "status", "value": "Failure"},
+    {"name": "error", "value": "Failed to create droplet"}
+  ]
+}' >&3
+    exit 1
+  else
+    echo "Droplet \"$WORKER_NAME\" was created successfully with id: ($droplet_id)"
+fi
+
+echo
+echo "Checking if droplet is accessible yet"
+while true
+do
+  sleep 10
+  set +e
+  droplet_ip=$(curl -sSX GET \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $DO_API_KEY" \
+  "https://api.digitalocean.com/v2/droplets/$droplet_id" | jq -r '.droplet.networks.v4[0].ip_address')
+
+  ssh root@$droplet_ip "exit"; R=$?
+  set -e
+  if [ $R -eq 0 ]; then
+    echo "Droplet $WORKER_NAME is accessible on $droplet_ip :D"
     break
   else
-    echo "Failed to destroy droplet \"$WORKER_NAME\" :( trying again in few seconds.."
-    sleep 3
+    echo "Failed to access droplet \"$WORKER_NAME\" on $droplet_ip :( trying again in 10 seconds.."
   fi
 done
 
 echo
-echo "Trying to remove the worker \"$WORKER_NAME\" from Concourse TSA registry.."
-# Prune the worker from concourse web service
+echo "Configuring concourse worker on the created droplet:"
+ssh root@$droplet_ip "mkdir -p /etc/concourse"
+scp $keys/worker_key $keys/tsa_host_key.pub root@$droplet_ip:/etc/concourse/
+ssh root@$droplet_ip \
+  "docker run -d --privileged \
+    --name $WORKER_NAME \
+    --restart always \
+    -v /etc/concourse:/etc/concourse \
+    concourse/concourse:$CO_VERSION worker --name=$WORKER_NAME --tag=$WORKER_NAME --tsa-host=$CO_TSA_HOST --tsa-public-key=/etc/concourse/tsa_host_key.pub --tsa-worker-private-key=/etc/concourse/worker_key"
+echo
+echo "Worker is configured successfully :)"
+
+echo
+echo "Waiting for the worker to register itself to TSA server."
+# Checking if worker is registered to TSA
 while true
 do
   set +e
-  fly -t main pw -w $WORKER_NAME > /dev/null
   fly -t main ws | cut -d\  -f1 | grep "^$WORKER_NAME\$" > /dev/null; R=$?
   set -e
-  if [ $R -ne 0 ]; then
-    echo "Concourse worker $WORKER_NAME was successfully removed from the TSA server :D"
+  if [ $R -eq 0 ]; then
+    echo
+    echo "Concourse worker $WORKER_NAME is successfully registered to TSA server :D"
     break
   else
-    for i in $(seq 10 -1 1); do
-      printf "Concourse worker $WORKER_NAME is still registered :( trying to prune it again in ${i}s.  \r"
+    for i in $(seq 5 -1 1); do
+      printf "Concourse worker is not registered yet :( trying again in ${i}s.  \r"
       sleep 1
     done
-    printf "Concourse worker $WORKER_NAME is still registered :( trying to prune it again now.         \n"
+    printf "Concourse worker is not registered yet :( trying again now.         \n"
   fi
 done
 
-echo '
-{
+
+cd $home
+echo "$droplet_id" > ./id
+echo "$droplet_ip" > ./ip
+
+echo '{
   "version": {"ref": "'$random_ver'"},
   "metadata": [
-    {"name": "status", "value": "Worker destroyed"},
-    {"name": "worker_name", "value": '"\"$WORKER_NAME\""'}
+    {"name": "status", "value": "Worker created"},
+    {"name": "worker_name", "value": '"\"$WORKER_NAME\""'},
+    {"name": "droplet_id", "value": '"\"$droplet_id\""'},
+    {"name": "droplet_ip", "value": '"\"$droplet_ip\""'}
   ]
 }' >&3

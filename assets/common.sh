@@ -9,7 +9,7 @@ random_ver=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 15 | head -n 1)
 
 # if
 check_create(){
-  dont_destroy=$(echo "$payload" | jq -r '.params.dont_destroy // false')
+  dont_get=$(echo "$payload" | jq -r '.params.dont_get // false')
 }
 
 # initializing variables
